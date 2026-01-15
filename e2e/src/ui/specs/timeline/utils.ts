@@ -106,7 +106,7 @@ export const thumbnailUtils = {
     // todo - need a data attribute for selected
     await expect(
       page.locator(
-        `[data-thumbnail-focus-container][data-asset="${assetId}"] > .group.cursor-not-allowed > .rounded-xl`,
+        `[data-thumbnail-focus-container][data-asset="${assetId}"] > .group.cursor-not-allowed > .rounded-xl:not([data-outline])`,
       ),
     ).toBeVisible();
   },
