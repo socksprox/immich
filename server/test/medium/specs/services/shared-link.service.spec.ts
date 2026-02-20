@@ -95,6 +95,203 @@ describe(SharedLinkService.name, () => {
     });
   });
 
+  describe('getAll', () => {
+    it('should return all shared links even when they share the same createdAt', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const auth = factory.auth({ user });
+
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+      const sameTimestamp = '2024-01-01T00:00:00.000Z';
+
+      const link1 = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+        createdAt: sameTimestamp,
+      });
+
+      const link2 = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+        createdAt: sameTimestamp,
+      });
+
+      const result = await sut.getAll(auth, {});
+      expect(result).toHaveLength(2);
+      const ids = result.map((r) => r.id);
+      expect(ids).toContain(link1.id);
+      expect(ids).toContain(link2.id);
+    });
+
+    it('should return shared links sorted by createdAt in descending order', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const auth = factory.auth({ user });
+
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+
+      const link1 = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+        createdAt: '2021-01-01T00:00:00.000Z',
+      });
+
+      const link2 = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+        createdAt: '2023-01-01T00:00:00.000Z',
+      });
+
+      const link3 = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+        createdAt: '2022-01-01T00:00:00.000Z',
+      });
+
+      const result = await sut.getAll(auth, {});
+      expect(result).toHaveLength(3);
+      expect(result.map((r) => r.id)).toEqual([link2.id, link3.id, link1.id]);
+    });
+
+    it('should not return shared links belonging to other users', async () => {
+      const { sut, ctx } = setup();
+
+      const { user: userA } = await ctx.newUser();
+      const { user: userB } = await ctx.newUser();
+      const authA = factory.auth({ user: userA });
+      const authB = factory.auth({ user: userB });
+
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+
+      const linkA = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: userA.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+      });
+
+      await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: userB.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+      });
+
+      const resultA = await sut.getAll(authA, {});
+      expect(resultA).toHaveLength(1);
+      expect(resultA[0].id).toBe(linkA.id);
+
+      const resultB = await sut.getAll(authB, {});
+      expect(resultB).toHaveLength(1);
+      expect(resultB[0].id).not.toBe(linkA.id);
+    });
+
+    it('should filter by albumId', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const auth = factory.auth({ user });
+
+      const { album: album1 } = await ctx.newAlbum({ ownerId: user.id });
+      const { album: album2 } = await ctx.newAlbum({ ownerId: user.id });
+
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+
+      const link1 = await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        albumId: album1.id,
+        allowUpload: false,
+        type: SharedLinkType.Album,
+      });
+
+      await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        albumId: album2.id,
+        allowUpload: false,
+        type: SharedLinkType.Album,
+      });
+
+      const result = await sut.getAll(auth, { albumId: album1.id });
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe(link1.id);
+    });
+
+    it('should return album shared links with album data', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const auth = factory.auth({ user });
+
+      const { album } = await ctx.newAlbum({ ownerId: user.id });
+
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+
+      await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        albumId: album.id,
+        allowUpload: false,
+        type: SharedLinkType.Album,
+      });
+
+      const result = await sut.getAll(auth, {});
+      expect(result).toHaveLength(1);
+      expect(result[0].album).toBeDefined();
+      expect(result[0].album!.id).toBe(album.id);
+    });
+
+    it('should return all assets for an individual shared link', async () => {
+      const { sut, ctx } = setup();
+      const { user } = await ctx.newUser();
+      const auth = factory.auth({ user });
+
+      const assets = await Promise.all([
+        ctx.newAsset({ ownerId: user.id }),
+        ctx.newAsset({ ownerId: user.id }),
+        ctx.newAsset({ ownerId: user.id }),
+      ]);
+
+      const sharedLinkRepo = ctx.get(SharedLinkRepository);
+
+      await sharedLinkRepo.create({
+        key: randomBytes(16),
+        id: factory.uuid(),
+        userId: user.id,
+        allowUpload: false,
+        type: SharedLinkType.Individual,
+        assetIds: assets.map(({ asset }) => asset.id),
+      });
+
+      const result = await sut.getAll(auth, {});
+      expect(result).toHaveLength(1);
+      expect(result[0].assets).toHaveLength(3);
+      const assetIds = result[0].assets.map((a) => a.id);
+      for (const { asset } of assets) {
+        expect(assetIds).toContain(asset.id);
+      }
+    });
+  });
+
   it('should remove individually shared asset', async () => {
     const { sut, ctx } = setup();
 

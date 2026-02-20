@@ -102,22 +102,28 @@ order by
   "shared_link"."createdAt" desc
 
 -- SharedLinkRepository.getAll
-select distinct
-  on ("shared_link"."createdAt") "shared_link".*,
-  "assets"."assets",
+select
+  "shared_link".*,
+  coalesce(
+    json_agg("a") filter (
+      where
+        "a"."id" is not null
+    ),
+    '[]'
+  ) as "assets",
   to_json("album") as "album"
 from
   "shared_link"
-  left join "shared_link_asset" on "shared_link_asset"."sharedLinkId" = "shared_link"."id"
   left join lateral (
     select
-      json_agg("asset") as "assets"
+      "asset".*
     from
-      "asset"
+      "shared_link_asset"
+      inner join "asset" on "asset"."id" = "shared_link_asset"."assetId"
     where
-      "asset"."id" = "shared_link_asset"."assetId"
+      "shared_link"."id" = "shared_link_asset"."sharedLinkId"
       and "asset"."deletedAt" is null
-  ) as "assets" on true
+  ) as "a" on true
   left join lateral (
     select
       "album".*,
@@ -158,6 +164,9 @@ where
     or "album"."id" is not null
   )
   and "shared_link"."albumId" = $3
+group by
+  "shared_link"."id",
+  "album".*
 order by
   "shared_link"."createdAt" desc
 

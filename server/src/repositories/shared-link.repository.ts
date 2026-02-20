@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Insertable, Kysely, NotNull, sql, Updateable } from 'kysely';
+import { Insertable, Kysely, sql, Updateable } from 'kysely';
 import { jsonObjectFrom } from 'kysely/helpers/postgres';
 import _ from 'lodash';
 import { InjectKysely } from 'nestjs-kysely';
@@ -124,19 +124,17 @@ export class SharedLinkRepository {
       .selectFrom('shared_link')
       .selectAll('shared_link')
       .where('shared_link.userId', '=', userId)
-      .leftJoin('shared_link_asset', 'shared_link_asset.sharedLinkId', 'shared_link.id')
       .leftJoinLateral(
         (eb) =>
           eb
-            .selectFrom('asset')
-            .select((eb) => eb.fn.jsonAgg('asset').as('assets'))
-            .whereRef('asset.id', '=', 'shared_link_asset.assetId')
+            .selectFrom('shared_link_asset')
+            .whereRef('shared_link.id', '=', 'shared_link_asset.sharedLinkId')
+            .innerJoin('asset', 'asset.id', 'shared_link_asset.assetId')
             .where('asset.deletedAt', 'is', null)
-            .as('assets'),
+            .selectAll('asset')
+            .as('a'),
         (join) => join.onTrue(),
       )
-      .select('assets.assets')
-      .$narrowType<{ assets: NotNull }>()
       .leftJoinLateral(
         (eb) =>
           eb
@@ -174,12 +172,18 @@ export class SharedLinkRepository {
             .as('album'),
         (join) => join.onTrue(),
       )
+      .select((eb) =>
+        eb.fn
+          .coalesce(eb.fn.jsonAgg('a').filterWhere('a.id', 'is not', null), sql`'[]'`)
+          .$castTo<MapAsset[]>()
+          .as('assets'),
+      )
+      .groupBy(['shared_link.id', sql`"album".*`])
       .select((eb) => eb.fn.toJson('album').$castTo<Album | null>().as('album'))
       .where((eb) => eb.or([eb('shared_link.type', '=', SharedLinkType.Individual), eb('album.id', 'is not', null)]))
       .$if(!!albumId, (eb) => eb.where('shared_link.albumId', '=', albumId!))
       .$if(!!id, (eb) => eb.where('shared_link.id', '=', id!))
       .orderBy('shared_link.createdAt', 'desc')
-      .distinctOn(['shared_link.createdAt'])
       .execute();
   }
 
