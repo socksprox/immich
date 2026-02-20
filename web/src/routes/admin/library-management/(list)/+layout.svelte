@@ -7,7 +7,7 @@
   import { getLibrariesActions, getLibraryActions } from '$lib/services/library.service';
   import { locale } from '$lib/stores/preferences.store';
   import { getBytesWithUnit } from '$lib/utils/byte-units';
-  import { getLibrary, getLibraryStatistics, type LibraryResponseDto } from '@immich/sdk';
+  import { getLibrary, getLibraryStatistics, type LibraryResponseDto, type LibraryStatsResponseDto } from '@immich/sdk';
   import {
     CommandPaletteDefaultProvider,
     Container,
@@ -34,8 +34,20 @@
   let { children, data }: Props = $props();
 
   let libraries = $state(data.libraries);
-  let statistics = $state(data.statistics);
+  let statistics = $state<Record<string, LibraryStatsResponseDto>>({});
   let owners = $state(data.owners);
+
+  const loadStatistics = async () => {
+    try {
+      statistics = await data.statisticsPromise;
+    } catch (error) {
+      console.error('Failed to load library statistics:', error);
+    }
+  };
+
+  $effect(() => {
+    void loadStatistics();
+  });
 
   const onLibraryCreate = async (library: LibraryResponseDto) => {
     await goto(Route.viewLibrary(library));
@@ -94,8 +106,7 @@
           </TableHeader>
           <TableBody>
             {#each libraries as library (library.id + library.name)}
-              {@const { photos, usage, videos } = statistics[library.id]}
-              {@const [diskUsage, diskUsageUnit] = getBytesWithUnit(usage, 0)}
+              {@const stats = statistics[library.id]}
               {@const owner = owners[library.id]}
               <TableRow>
                 <TableCell class={classes.column1}>
@@ -104,9 +115,59 @@
                 <TableCell class={classes.column2}>
                   <Link href={Route.viewUser(owner)}>{owner.name}</Link>
                 </TableCell>
-                <TableCell class={classes.column3}>{photos.toLocaleString($locale)}</TableCell>
-                <TableCell class={classes.column4}>{videos.toLocaleString($locale)}</TableCell>
-                <TableCell class={classes.column5}>{diskUsage} {diskUsageUnit}</TableCell>
+                <TableCell class={classes.column3}>
+                  {#if stats}
+                    {stats.photos.toLocaleString($locale)}
+                  {:else}
+                    <div class="flex items-center justify-center">
+                      <svg class="animate-spin h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                        ></circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                    </div>
+                  {/if}
+                </TableCell>
+                <TableCell class={classes.column4}>
+                  {#if stats}
+                    {stats.videos.toLocaleString($locale)}
+                  {:else}
+                    <div class="flex items-center justify-center">
+                      <svg class="animate-spin h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                        ></circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                    </div>
+                  {/if}
+                </TableCell>
+                <TableCell class={classes.column5}>
+                  {#if stats}
+                    {@const [diskUsage, diskUsageUnit] = getBytesWithUnit(stats.usage, 0)}
+                    {diskUsage}
+                    {diskUsageUnit}
+                  {:else}
+                    <div class="flex items-center justify-center">
+                      <svg class="animate-spin h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+                        ></circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                    </div>
+                  {/if}
+                </TableCell>
                 <TableCell class={classes.column6}>
                   <ContextMenuButton color="primary" aria-label={$t('open')} items={getActionsForLibrary(library)} />
                 </TableCell>
